@@ -2,7 +2,7 @@
 
 A live campus bus tracker for UIUC. Buses appear as 3D rectangular prisms on a Mapbox GL dark map, updated in real time via WebSocket. A sidebar lets you filter by route.
 
-![screenshot placeholder](docs/screenshot.png)
+![screenshot](frontend/public/screenshot.png)
 
 ## Stack
 
@@ -58,7 +58,7 @@ npm run dev
 # Runs on http://localhost:5173
 ```
 
-Open http://localhost:5173 — the map loads, buses appear within 30 s.
+Open <http://localhost:5173> — the map loads, buses appear within 30 s.
 
 ## API endpoints
 
@@ -69,7 +69,7 @@ Open http://localhost:5173 — the map loads, buses appear within 30 s.
 | GET | `/api/stops` | All stops (flattened stop_points) |
 | WS | `/ws` | Live vehicle positions, pushed every 30 s |
 
-Interactive docs: http://localhost:8000/docs
+Interactive docs: <http://localhost:8000/docs>
 
 ## Project structure
 
