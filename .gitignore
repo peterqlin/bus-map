@@ -1,0 +1,38 @@
+# Environment variables — never commit real keys
+.env
+backend/.env
+frontend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+e2e/node_modules/
+
+# Playwright
+e2e/test-results/
+e2e/playwright-report/
+e2e/.playwright/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Claude Code internal
+.claude/

@@ -1,0 +1,112 @@
+from __future__ import annotations
+import time
+import logging
+from typing import Any
+
+import httpx
+
+from .models import MTDAPIError, VehicleLocation, Route, Stop, ShapePoint
+
+logger = logging.getLogger(__name__)
+
+MTD_BASE = "https://developer.mtd.org/api/v2.2/json"
+VEHICLE_POLL_INTERVAL = 60  # seconds minimum between fetches
+
+
+class MTDClient:
+    def __init__(self, client: httpx.AsyncClient, api_key: str):
+        self._client = client
+        self._api_key = api_key
+        self._vehicle_cache: list[VehicleLocation] = []
+        self._vehicle_last_fetch: float = 0.0
+        self._routes_cache: list[Route] | None = None
+        self._stops_cache: list[Stop] | None = None
+        self._shape_cache: dict[str, list[ShapePoint]] = {}
+        # Maps route_id -> shape_id, populated from vehicle trip data
+        self._route_shape_ids: dict[str, str] = {}
+
+    async def _get(self, method: str, **params: Any) -> dict[str, Any]:
+        url = f"{MTD_BASE}/{method}"
+        params["key"] = self._api_key
+        resp = await self._client.get(url, params=params)
+        resp.raise_for_status()
+        body = resp.json()
+        # MTD v2.2 returns data at top level (no rsp wrapper)
+        stat = body.get("status", {})
+        code = stat.get("code", 200)
+        msg = stat.get("msg", "ok")
+        if code != 200:
+            raise MTDAPIError(code, msg)
+        return body
+
+    async def get_vehicles(self) -> list[VehicleLocation]:
+        now = time.monotonic()
+        if now - self._vehicle_last_fetch < VEHICLE_POLL_INTERVAL and self._vehicle_cache:
+            logger.debug("Returning cached vehicles")
+            return self._vehicle_cache
+
+        body = await self._get("getvehicles")
+        raw = body.get("vehicles", [])
+        vehicles: list[VehicleLocation] = []
+        for v in raw:
+            trip = v.get("trip") or {}
+            location = v.get("location") or {}
+            route_id = trip.get("route_id") or ""
+            shape_id = trip.get("shape_id") or ""
+            if route_id and shape_id:
+                self._route_shape_ids[route_id] = shape_id
+            vehicles.append(VehicleLocation(
+                vehicle_id=v.get("vehicle_id") or "",
+                lat=location.get("lat") or 0.0,
+                lon=location.get("lon") or 0.0,
+                route_id=route_id,
+                trip_id=trip.get("trip_id") or "",
+                shape_id=shape_id,
+                next_stop_id=v.get("next_stop_id") or "",
+                last_updated=v.get("last_updated") or "",
+            ))
+        self._vehicle_cache = vehicles
+        self._vehicle_last_fetch = now
+        return self._vehicle_cache
+
+    async def get_routes(self) -> list[Route]:
+        if self._routes_cache is not None:
+            return self._routes_cache
+        body = await self._get("getroutes")
+        raw = body.get("routes", [])
+        self._routes_cache = [Route.model_validate(r) for r in raw]
+        return self._routes_cache
+
+    async def get_stops(self) -> list[Stop]:
+        if self._stops_cache is not None:
+            return self._stops_cache
+        body = await self._get("getstops")
+        raw = body.get("stops", [])
+        # Each stop has a stop_points array with the actual lat/lon
+        stops: list[Stop] = []
+        for stop in raw:
+            for sp in stop.get("stop_points", []):
+                stops.append(Stop(
+                    stop_id=sp.get("stop_id", ""),
+                    stop_name=sp.get("stop_name", stop.get("stop_name", "")),
+                    stop_lat=sp.get("stop_lat", 0.0),
+                    stop_lon=sp.get("stop_lon", 0.0),
+                ))
+        self._stops_cache = stops
+        return self._stops_cache
+
+    async def get_shape(self, route_id: str) -> list[ShapePoint]:
+        if route_id in self._shape_cache:
+            return self._shape_cache[route_id]
+
+        # Look up shape_id from vehicle trip data, fallback to route_id
+        shape_id = self._route_shape_ids.get(route_id, route_id)
+        body = await self._get("getshape", shape_id=shape_id)
+        raw = body.get("shapes", [])
+        points = [ShapePoint(
+            shape_pt_lat=p["shape_pt_lat"],
+            shape_pt_lon=p["shape_pt_lon"],
+            shape_pt_sequence=p["shape_pt_sequence"],
+        ) for p in raw]
+        self._shape_cache[route_id] = points
+        return points
