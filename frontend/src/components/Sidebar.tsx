@@ -12,46 +12,41 @@ export default function Sidebar({ routes, activeRoutes, onToggle, onAllOn, onAll
   return (
     <div
       data-testid="sidebar"
-      style={{
-        width: '240px',
-        height: '100%',
-        flexShrink: 0,
-        backgroundColor: 'rgba(20, 20, 30, 0.85)',
-        backdropFilter: 'blur(8px)',
-        color: '#fff',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 10,
-        padding: '16px',
-        boxSizing: 'border-box',
-        overflowY: 'auto',
-      }}
+      className="w-60 h-full shrink-0 flex flex-col z-10 p-4 overflow-y-auto bg-[rgba(20,20,30,0.85)] backdrop-blur-md text-white"
     >
-      <h2 style={{ margin: '0 0 12px', fontSize: '18px' }}>Routes</h2>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-        <button onClick={onAllOn} style={btnStyle}>All On</button>
-        <button onClick={onAllOff} style={btnStyle}>All Off</button>
+      <h2 className="text-lg font-semibold mb-3">Routes</h2>
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={onAllOn}
+          className="px-3 py-1 text-xs rounded border border-white/30 bg-white/15 text-white hover:bg-white/25 cursor-pointer"
+        >
+          All On
+        </button>
+        <button
+          onClick={onAllOff}
+          className="px-3 py-1 text-xs rounded border border-white/30 bg-white/15 text-white hover:bg-white/25 cursor-pointer"
+        >
+          All Off
+        </button>
       </div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, flex: 1 }}>
+      <ul className="list-none p-0 m-0 flex-1">
         {routes.map((route) => (
-          <li key={route.route_id} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <li key={route.route_id} className="mb-2 flex items-center gap-2">
             <input
               type="checkbox"
               id={`route-${route.route_id}`}
               checked={activeRoutes.has(route.route_id)}
               onChange={() => onToggle(route.route_id)}
+              className="cursor-pointer"
             />
             <span
-              style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                backgroundColor: `#${route.route_color}`,
-                display: 'inline-block',
-                flexShrink: 0,
-              }}
+              className="w-3 h-3 rounded-full shrink-0"
+              style={{ backgroundColor: `#${route.route_color}` }}
             />
-            <label htmlFor={`route-${route.route_id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
+            <label
+              htmlFor={`route-${route.route_id}`}
+              className="cursor-pointer text-xs"
+            >
               {route.route_short_name} – {route.route_long_name}
             </label>
           </li>
@@ -60,13 +55,3 @@ export default function Sidebar({ routes, activeRoutes, onToggle, onAllOn, onAll
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: '12px',
-  backgroundColor: 'rgba(255,255,255,0.15)',
-  color: '#fff',
-  border: '1px solid rgba(255,255,255,0.3)',
-  borderRadius: '4px',
-  cursor: 'pointer',
-};

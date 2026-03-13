@@ -19,27 +19,22 @@ export default function BusPopup({ bus, routes, onClose }: BusPopupProps) {
       onClose={onClose}
       closeOnClick={false}
     >
-      <div style={{ padding: '8px', minWidth: '160px' }}>
+      <div className="p-2 min-w-40">
         {route && (
           <span
+            className="inline-block px-2 py-0.5 rounded-full text-xs font-bold mb-1.5"
             style={{
               backgroundColor: `#${route.route_color}`,
               color: `#${route.route_text_color}`,
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              display: 'inline-block',
-              marginBottom: '6px',
             }}
           >
             {route.route_short_name} {route.route_long_name}
           </span>
         )}
-        <div style={{ fontSize: '13px' }}>
-          <div><strong>Vehicle:</strong> {bus.vehicle_id}</div>
-          <div><strong>Next Stop:</strong> {bus.next_stop_id}</div>
-          <div><strong>Updated:</strong> {formatted}</div>
+        <div className="text-sm space-y-0.5">
+          <div><span className="font-semibold">Vehicle:</span> {bus.vehicle_id}</div>
+          <div><span className="font-semibold">Next Stop:</span> {bus.next_stop_id}</div>
+          <div><span className="font-semibold">Updated:</span> {formatted}</div>
         </div>
       </div>
     </Popup>

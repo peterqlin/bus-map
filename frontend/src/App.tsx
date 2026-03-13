@@ -17,7 +17,7 @@ export default function App() {
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex' }}>
+    <div className="relative w-full h-full flex">
       <Sidebar
         routes={routes}
         activeRoutes={activeRoutes}
@@ -25,7 +25,7 @@ export default function App() {
         onAllOn={() => setAllRoutes(true)}
         onAllOff={() => setAllRoutes(false)}
       />
-      <div style={{ flex: 1, height: '100%' }}>
+      <div className="flex-1 h-full">
         <BusMap
           buses={buses}
           routes={routes}
@@ -38,17 +38,9 @@ export default function App() {
         />
       </div>
       <div
-        style={{
-          position: 'fixed',
-          bottom: '16px',
-          right: '16px',
-          padding: '4px 10px',
-          borderRadius: '12px',
-          fontSize: '12px',
-          backgroundColor: connectionStatus === 'connected' ? '#22c55e' : '#ef4444',
-          color: '#fff',
-          zIndex: 20,
-        }}
+        className={`fixed bottom-4 right-4 px-3 py-1 rounded-full text-xs text-white z-20 ${
+          connectionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'
+        }`}
       >
         {connectionStatus}
       </div>
