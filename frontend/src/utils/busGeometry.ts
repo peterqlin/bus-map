@@ -18,17 +18,22 @@ function mToLon(m: number, lat: number): number {
  * direction of travel.
  */
 export function busPolygon(lat: number, lon: number, heading: number): number[][] {
-  const halfLen = mToLat(BUS_LENGTH_M / 2);
-  const halfWid = mToLon(BUS_WIDTH_M / 2, lat);
+  const halfLen = BUS_LENGTH_M / 2;  // metres, along forward axis
+  const halfWid = BUS_WIDTH_M  / 2;  // metres, along lateral axis
 
   const θ    = (heading * Math.PI) / 180;
   const cosθ = Math.cos(θ);
   const sinθ = Math.sin(θ);
 
-  function rot(dLon: number, dLat: number): [number, number] {
+  // Rotate (dRight, dFwd) in metres → geographic [ΔLon°, ΔLat°].
+  // All arithmetic stays in a uniform metre space before converting to degrees,
+  // so the aspect ratio is preserved regardless of heading direction.
+  function rot(dRight: number, dFwd: number): [number, number] {
+    const dEast_m  =  dRight * cosθ + dFwd * sinθ;
+    const dNorth_m = -dRight * sinθ + dFwd * cosθ;
     return [
-      dLon * cosθ + dLat * sinθ,
-      -dLon * sinθ + dLat * cosθ,
+      mToLon(dEast_m,  lat),
+      mToLat(dNorth_m),
     ];
   }
 
@@ -42,8 +47,8 @@ export function busPolygon(lat: number, lon: number, heading: number): number[][
     [-halfWid,  shoulderLen],  // front-left shoulder
   ];
 
-  const ring = corners.map(([dLon, dLat]) => {
-    const [rLon, rLat] = rot(dLon, dLat);
+  const ring = corners.map(([dRight, dFwd]) => {
+    const [rLon, rLat] = rot(dRight, dFwd);
     return [lon + rLon, lat + rLat];
   });
   ring.push(ring[0]);

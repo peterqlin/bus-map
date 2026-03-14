@@ -78,6 +78,44 @@ function walkForward(shape: ShapePoint[], pos: PolylinePos, distM: number): Poly
   return { segIdx, t, lat, lon };
 }
 
+/** Walk `distM` metres backward along the polyline from `pos`. */
+function walkBackward(shape: ShapePoint[], pos: PolylinePos, distM: number): PolylinePos {
+  let rem = distM;
+  let { segIdx, t, lat, lon } = pos;
+
+  while (rem > 0) {
+    const a = shape[segIdx], b = shape[segIdx + 1];
+    const dx = (b.shape_pt_lon - a.shape_pt_lon) * LON_SCALE_AT_UIUC;
+    const dy = (b.shape_pt_lat - a.shape_pt_lat) * LAT_SCALE;
+    const segLen = Math.sqrt(dx * dx + dy * dy);
+    if (segLen === 0) {
+      if (segIdx === 0) break;
+      segIdx--; t = 1;
+      lat = shape[segIdx + 1].shape_pt_lat;
+      lon = shape[segIdx + 1].shape_pt_lon;
+      continue;
+    }
+
+    const toStart = segLen * t;
+    if (rem <= toStart) {
+      t   -= rem / segLen;
+      lat  = a.shape_pt_lat + t * (b.shape_pt_lat - a.shape_pt_lat);
+      lon  = a.shape_pt_lon + t * (b.shape_pt_lon - a.shape_pt_lon);
+      rem  = 0;
+    } else {
+      rem -= toStart;
+      if (segIdx === 0) {
+        t = 0; lat = shape[0].shape_pt_lat; lon = shape[0].shape_pt_lon;
+        break;
+      }
+      segIdx--; t = 1;
+      lat = shape[segIdx + 1].shape_pt_lat;
+      lon = shape[segIdx + 1].shape_pt_lon;
+    }
+  }
+  return { segIdx, t, lat, lon };
+}
+
 /**
  * Collect the coordinates of the route curve from `startLon/Lat` to `to`,
  * including intermediate shape vertices so the trail follows real turns.
@@ -87,10 +125,17 @@ function routeCoords(
   startLon: number, startLat: number,
   from: PolylinePos,
   to: PolylinePos,
+  forward: boolean,
 ): [number, number][] {
   const pts: [number, number][] = [[startLon, startLat]];
-  for (let i = from.segIdx + 1; i <= to.segIdx && i < shape.length; i++) {
-    pts.push([shape[i].shape_pt_lon, shape[i].shape_pt_lat]);
+  if (forward) {
+    for (let i = from.segIdx + 1; i <= to.segIdx && i < shape.length; i++) {
+      pts.push([shape[i].shape_pt_lon, shape[i].shape_pt_lat]);
+    }
+  } else {
+    for (let i = from.segIdx; i > to.segIdx; i--) {
+      pts.push([shape[i].shape_pt_lon, shape[i].shape_pt_lat]);
+    }
   }
   pts.push([to.lon, to.lat]);
   return pts;
@@ -102,6 +147,11 @@ function segmentHeading(shape: ShapePoint[], segIdx: number): number {
   const dy = (shape[i + 1].shape_pt_lat - shape[i].shape_pt_lat) * LAT_SCALE;
   const dx = (shape[i + 1].shape_pt_lon - shape[i].shape_pt_lon) * LON_SCALE_AT_UIUC;
   return ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+}
+
+/** Smallest angle between two compass headings (0–180). */
+function angularDiff(a: number, b: number): number {
+  return Math.abs(((a - b + 180 + 360) % 360) - 180);
 }
 
 // ─── component ──────────────────────────────────────────────────────────────
@@ -196,17 +246,26 @@ export default function GhostLayer({ buses, shapes, routes, activeRoutes }: Ghos
           const distM   = elapsed * BUS_SPEED_MPS;
           if (distM < 5) continue; // ghost too close to confirmed position to bother
 
-          const nearest   = nearestOnPolyline(shape, bus.lat, bus.lon);
-          const ghost     = walkForward(shape, nearest, distM);
-          const ghostHead = segmentHeading(shape, ghost.segIdx);
-          const color     = colors.get(bus.route_id) ?? '#3b82f6';
+          const nearest = nearestOnPolyline(shape, bus.lat, bus.lon);
+
+          // Determine if the bus is traveling with or against the shape's winding
+          // by comparing bus.heading to the forward bearing of the nearest segment.
+          const fwdBearing = segmentHeading(shape, nearest.segIdx);
+          const goingFwd   = angularDiff(bus.heading, fwdBearing) <= 90;
+
+          const ghost     = goingFwd
+            ? walkForward(shape, nearest, distM)
+            : walkBackward(shape, nearest, distM);
+          const ghostSegHead = segmentHeading(shape, ghost.segIdx);
+          const ghostHead    = goingFwd ? ghostSegHead : (ghostSegHead + 180) % 360;
+          const color        = colors.get(bus.route_id) ?? '#3b82f6';
 
           // Trail follows the actual route curve so it rounds corners correctly.
           trailFeatures.push({
             type: 'Feature',
             geometry: {
               type: 'LineString',
-              coordinates: routeCoords(shape, bus.lon, bus.lat, nearest, ghost),
+              coordinates: routeCoords(shape, bus.lon, bus.lat, nearest, ghost, goingFwd),
             },
             properties: { color },
           });
