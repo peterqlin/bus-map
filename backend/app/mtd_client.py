@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import math
 import time
 import logging
 from typing import Any
@@ -9,6 +10,16 @@ import httpx
 from .models import MTDAPIError, VehicleLocation, Route, Stop, ShapePoint
 
 logger = logging.getLogger(__name__)
+
+def _compute_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Compass bearing in degrees [0, 360) clockwise from North."""
+    φ1 = math.radians(lat1)
+    φ2 = math.radians(lat2)
+    Δλ = math.radians(lon2 - lon1)
+    y = math.sin(Δλ) * math.cos(φ2)
+    x = math.cos(φ1) * math.sin(φ2) - math.sin(φ1) * math.cos(φ2) * math.cos(Δλ)
+    return (math.degrees(math.atan2(y, x)) + 360) % 360
+
 
 MTD_BASE = "https://developer.mtd.org/api/v2.2/json"
 VEHICLE_POLL_INTERVAL = 60  # seconds minimum between fetches
@@ -21,6 +32,8 @@ class MTDClient:
         self._api_key = api_key
         self._vehicle_cache: list[VehicleLocation] = []
         self._vehicle_last_fetch: float = 0.0
+        # vehicle_id -> (lat, lon, heading) — used to compute heading from position delta
+        self._vehicle_prev_positions: dict[str, tuple[float, float, float]] = {}
         self._routes_cache: list[Route] | None = None
         self._stops_cache: list[Stop] | None = None
         self._shape_cache: dict[str, list[ShapePoint]] = {}
@@ -59,12 +72,33 @@ class MTDClient:
             shape_id = trip.get("shape_id") or ""
             if route_id and shape_id:
                 self._route_shape_ids[route_id] = shape_id
+            vehicle_id = v.get("vehicle_id") or ""
             lat_val = location.get("lat")
             lon_val = location.get("lon")
             if lat_val is None or lon_val is None:
                 continue  # skip vehicles with no position data
+
+            # MTD API v2.2 does not return a heading field in the location object.
+            # Compute compass bearing from the previous known position instead.
+            # Fall back to the last known heading if the vehicle hasn't moved enough
+            # to produce a reliable bearing (threshold ≈ 11 m).
+            api_heading = location.get("heading")
+            if api_heading is not None:
+                heading = float(api_heading)
+            else:
+                prev = self._vehicle_prev_positions.get(vehicle_id)
+                if prev is not None:
+                    prev_lat, prev_lon, prev_heading = prev
+                    if (lat_val - prev_lat) ** 2 + (lon_val - prev_lon) ** 2 > 1e-8:
+                        heading = _compute_bearing(prev_lat, prev_lon, lat_val, lon_val)
+                    else:
+                        heading = prev_heading  # stationary — keep last known heading
+                else:
+                    heading = 0.0  # first sighting, no direction available yet
+            self._vehicle_prev_positions[vehicle_id] = (lat_val, lon_val, heading)
+
             vehicles.append(VehicleLocation(
-                vehicle_id=v.get("vehicle_id") or "",
+                vehicle_id=vehicle_id,
                 lat=lat_val,
                 lon=lon_val,
                 route_id=route_id,
@@ -72,7 +106,7 @@ class MTDClient:
                 shape_id=shape_id,
                 next_stop_id=v.get("next_stop_id") or "",
                 last_updated=v.get("last_updated") or "",
-                heading=float(location.get("heading") or 0.0),
+                heading=heading,
             ))
         self._vehicle_cache = vehicles
         self._vehicle_last_fetch = now

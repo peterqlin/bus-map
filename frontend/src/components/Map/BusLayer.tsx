@@ -36,11 +36,15 @@ function busPolygon(lat: number, lon: number, heading: number): number[][] {
     ];
   }
 
+  // Pentagon: rectangular body tapering to a nose at the front (+halfLen side).
+  // The pointed tip makes the direction of travel unambiguous at any zoom.
+  const shoulderLen = halfLen * 0.55; // where the body begins to taper
   const corners: [number, number][] = [
-    [-halfWid, -halfLen],
-    [ halfWid, -halfLen],
-    [ halfWid,  halfLen],
-    [-halfWid,  halfLen],
+    [-halfWid, -halfLen],      // back-left
+    [ halfWid, -halfLen],      // back-right
+    [ halfWid,  shoulderLen],  // front-right shoulder
+    [ 0,        halfLen],      // nose tip
+    [-halfWid,  shoulderLen],  // front-left shoulder
   ];
 
   const ring = corners.map(([dLon, dLat]) => {
