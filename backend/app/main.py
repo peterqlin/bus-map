@@ -32,16 +32,17 @@ async def lifespan(app: FastAPI):
     app.state.mtd_client = mtd_client
     app.state.tracker = tracker
 
-    # Pre-fetch static data
-    if settings.mtd_api_key:
+    if not settings.mtd_api_key:
+        logger.error("MTD_API_KEY is not set — vehicle tracker will not start")
+    else:
+        # Pre-fetch static data
         try:
             await mtd_client.get_routes()
             await mtd_client.get_stops()
             logger.info("Static MTD data loaded")
         except Exception as exc:
             logger.warning("Could not pre-fetch MTD data: %s", exc)
-
-    await tracker.start()
+        await tracker.start()
     yield
     await tracker.stop()
     await http_client.aclose()

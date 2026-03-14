@@ -58,7 +58,9 @@ export default function BusMap({
   const handleBusClick = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
     if (!feature?.properties) return;
-    onBusClick(feature.properties as VehicleLocation);
+    const props = feature.properties;
+    if (!props.vehicle_id || !props.lat || !props.lon) return;
+    onBusClick(props as VehicleLocation);
   }, [onBusClick]);
 
   return (

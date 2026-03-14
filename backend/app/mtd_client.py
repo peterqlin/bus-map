@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import time
 import logging
 from typing import Any
@@ -22,6 +23,7 @@ class MTDClient:
         self._routes_cache: list[Route] | None = None
         self._stops_cache: list[Stop] | None = None
         self._shape_cache: dict[str, list[ShapePoint]] = {}
+        self._shape_fetching: dict[str, asyncio.Task[list[ShapePoint]]] = {}
         # Maps route_id -> shape_id, populated from vehicle trip data
         self._route_shape_ids: dict[str, str] = {}
 
@@ -98,7 +100,17 @@ class MTDClient:
     async def get_shape(self, route_id: str) -> list[ShapePoint]:
         if route_id in self._shape_cache:
             return self._shape_cache[route_id]
+        # If a fetch is already in flight for this route, await it instead of launching another
+        if route_id in self._shape_fetching:
+            return await self._shape_fetching[route_id]
+        task: asyncio.Task[list[ShapePoint]] = asyncio.create_task(self._fetch_shape(route_id))
+        self._shape_fetching[route_id] = task
+        try:
+            return await task
+        finally:
+            self._shape_fetching.pop(route_id, None)
 
+    async def _fetch_shape(self, route_id: str) -> list[ShapePoint]:
         # Look up shape_id from vehicle trip data, fallback to route_id
         shape_id = self._route_shape_ids.get(route_id, route_id)
         body = await self._get("getshape", shape_id=shape_id)

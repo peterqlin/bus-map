@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 30  # seconds
+MAX_CONNECTIONS = 200
 
 
 class VehicleTracker:
@@ -33,6 +34,10 @@ class VehicleTracker:
                 pass
 
     async def connect(self, ws: WebSocket) -> None:
+        if len(self._clients) >= MAX_CONNECTIONS:
+            await ws.accept()
+            await ws.close(code=1008, reason="Too many connections")
+            return
         await ws.accept()
         self._clients.add(ws)
         # Send cached data immediately
