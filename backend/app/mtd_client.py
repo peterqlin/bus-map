@@ -21,6 +21,59 @@ def _compute_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     return (math.degrees(math.atan2(y, x)) + 360) % 360
 
 
+def _point_to_segment_dist_sq(
+    lat: float, lon: float,
+    a_lat: float, a_lon: float,
+    b_lat: float, b_lon: float,
+) -> float:
+    """Squared Euclidean distance (degrees²) from a point to a line segment."""
+    dx, dy = b_lon - a_lon, b_lat - a_lat
+    if dx == 0.0 and dy == 0.0:
+        return (lat - a_lat) ** 2 + (lon - a_lon) ** 2
+    t = max(0.0, min(1.0, ((lon - a_lon) * dx + (lat - a_lat) * dy) / (dx * dx + dy * dy)))
+    return (lat - (a_lat + t * dy)) ** 2 + (lon - (a_lon + t * dx)) ** 2
+
+
+def _snap_heading_to_route(
+    shape: list[ShapePoint],
+    lat: float,
+    lon: float,
+    heading: float,
+) -> float:
+    """
+    Correct `heading` by snapping it to the nearest route segment bearing.
+
+    Finds the shape segment closest to (lat, lon), then chooses the forward
+    or reverse direction of that segment based on which is angularly closer
+    to the existing heading.  This eliminates the 180° ambiguity that arises
+    when a bus makes a turn between two poll cycles.
+    """
+    if len(shape) < 2:
+        return heading
+
+    best_dist_sq = float("inf")
+    best_seg_bearing = heading
+
+    for i in range(len(shape) - 1):
+        a, b = shape[i], shape[i + 1]
+        d_sq = _point_to_segment_dist_sq(
+            lat, lon,
+            a.shape_pt_lat, a.shape_pt_lon,
+            b.shape_pt_lat, b.shape_pt_lon,
+        )
+        if d_sq < best_dist_sq:
+            best_dist_sq = d_sq
+            best_seg_bearing = _compute_bearing(
+                a.shape_pt_lat, a.shape_pt_lon,
+                b.shape_pt_lat, b.shape_pt_lon,
+            )
+
+    reverse = (best_seg_bearing + 180.0) % 360.0
+    fwd_diff = abs((best_seg_bearing - heading + 180.0) % 360.0 - 180.0)
+    rev_diff = abs((reverse - heading + 180.0) % 360.0 - 180.0)
+    return best_seg_bearing if fwd_diff <= rev_diff else reverse
+
+
 MTD_BASE = "https://developer.mtd.org/api/v2.2/json"
 VEHICLE_POLL_INTERVAL = 60  # seconds minimum between fetches
 SHAPE_CACHE_TTL = 86_400    # 24 hours — aligns with nightly GTFS updates
@@ -95,6 +148,13 @@ class MTDClient:
                         heading = prev_heading  # stationary — keep last known heading
                 else:
                     heading = 0.0  # first sighting, no direction available yet
+            # Snap to nearest route segment if the shape is already in cache.
+            # Pure synchronous read — no HTTP call, zero extra latency.
+            if route_id and route_id in self._shape_cache:
+                heading = _snap_heading_to_route(
+                    self._shape_cache[route_id], lat_val, lon_val, heading
+                )
+
             self._vehicle_prev_positions[vehicle_id] = (lat_val, lon_val, heading)
 
             vehicles.append(VehicleLocation(

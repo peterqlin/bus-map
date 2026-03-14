@@ -1,8 +1,8 @@
 import pytest
 import time
 from unittest.mock import patch
-from app.mtd_client import MTDClient, _compute_bearing
-from app.models import MTDAPIError
+from app.mtd_client import MTDClient, _compute_bearing, _snap_heading_to_route
+from app.models import MTDAPIError, ShapePoint
 
 
 @pytest.mark.asyncio
@@ -62,6 +62,46 @@ def test_compute_bearing_cardinal():
     assert abs(_compute_bearing(40.0, -88.0, 39.9, -88.0) - 180.0) < 0.1
     # West: decreasing lon, same lat
     assert abs(_compute_bearing(40.0, -88.0, 40.0, -88.1) - 270.0) < 0.1
+
+
+def _make_shape(*coords: tuple[float, float]) -> list[ShapePoint]:
+    return [
+        ShapePoint(shape_pt_lat=lat, shape_pt_lon=lon, shape_pt_sequence=i + 1)
+        for i, (lat, lon) in enumerate(coords)
+    ]
+
+
+def test_snap_heading_forward():
+    # East-going segment: bearing ~90°. Bus heading 85° → snaps forward to ~90°.
+    shape = _make_shape((40.0, -88.1), (40.0, -88.0))
+    snapped = _snap_heading_to_route(shape, 40.0, -88.05, 85.0)
+    assert abs(snapped - 90.0) < 1.0
+
+
+def test_snap_heading_reverse():
+    # East-going segment: bearing ~90°. Bus heading 265° → snaps to reverse ~270°.
+    shape = _make_shape((40.0, -88.1), (40.0, -88.0))
+    snapped = _snap_heading_to_route(shape, 40.0, -88.05, 265.0)
+    assert abs(snapped - 270.0) < 1.0
+
+
+def test_snap_picks_nearest_segment():
+    # Two segments: one going east, one going north.
+    # Bus is near the north-going segment → should snap to ~0°.
+    shape = _make_shape(
+        (40.0, -88.2),   # seg 1: east  (40.0,-88.2) → (40.0,-88.1)
+        (40.0, -88.1),
+        (40.0, -88.1),   # seg 2: north (40.0,-88.1) → (40.1,-88.1)
+        (40.1, -88.1),
+    )
+    # Bus just west of the north segment, heading roughly north (10°)
+    snapped = _snap_heading_to_route(shape, 40.05, -88.105, 10.0)
+    assert abs(snapped - 0.0) < 2.0 or abs(snapped - 360.0) < 2.0
+
+
+def test_snap_returns_unchanged_for_single_point():
+    shape = _make_shape((40.0, -88.0))
+    assert _snap_heading_to_route(shape, 40.0, -88.0, 123.0) == 123.0
 
 
 @pytest.mark.asyncio
