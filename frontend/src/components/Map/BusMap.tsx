@@ -75,7 +75,7 @@ export default function BusMap({
       style={{ width: '100%', height: '100%' }}
       mapStyle="mapbox://styles/mapbox/dark-v11"
       onLoad={onMapLoad}
-      interactiveLayerIds={['bus-layer']}
+      interactiveLayerIds={['bus-layer', 'bus-dot']}
       onClick={handleBusClick}
     >
       <NavigationControl position="top-right" />
