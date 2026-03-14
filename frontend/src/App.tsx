@@ -16,6 +16,8 @@ export default function App() {
     api.getStops().then(setStops).catch(console.error);
   }, []);
 
+  const isConnected = connectionStatus === 'connected';
+
   return (
     <div className="relative w-full h-full flex">
       <Sidebar
@@ -37,12 +39,26 @@ export default function App() {
           onPopupClose={() => setSelectedBus(null)}
         />
       </div>
+
+      {/* Status indicator */}
       <div
-        className={`fixed bottom-4 right-4 px-3 py-1 rounded-full text-xs text-white z-20 ${
-          connectionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'
-        }`}
+        className="fixed bottom-5 right-5 z-20 flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium"
+        style={{
+          background: 'rgba(8, 8, 16, 0.9)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(16px)',
+          color: 'rgba(255,255,255,0.8)',
+        }}
       >
-        {connectionStatus}
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'animate-live-pulse' : ''}`}
+          style={{ background: isConnected ? '#4ade80' : '#f87171' }}
+        />
+        {isConnected
+          ? `${buses.length} bus${buses.length !== 1 ? 'es' : ''} live`
+          : connectionStatus === 'connecting'
+            ? 'Connecting…'
+            : 'Disconnected'}
       </div>
     </div>
   );
