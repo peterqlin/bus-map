@@ -11,6 +11,12 @@ export function useRoutes() {
     api.getRoutes().then((data) => {
       setRoutes(data);
       setActiveRoutes(new Set(data.map((r) => r.route_id)));
+      // Pre-load shapes for all routes so they render immediately on first paint
+      data.forEach((r) => {
+        api.getShape(r.route_id).then((pts) => {
+          setShapes((s) => ({ ...s, [r.route_id]: pts }));
+        });
+      });
     });
   }, []);
 
