@@ -1,58 +1,12 @@
 import { Source, Layer } from 'react-map-gl';
 import type { FeatureCollection, Polygon, Point } from 'geojson';
 import type { VehicleLocation, Route } from '../../types/mtd';
+import { busPolygon, BUS_HEIGHT_M } from '../../utils/busGeometry';
 
 interface BusLayerProps {
   buses: VehicleLocation[];
   activeRoutes: Set<string>;
   routes: Route[];
-}
-
-// Bus body dimensions — large enough to read as a directional shape at zoom 15+
-const BUS_LENGTH_M = 60;
-const BUS_WIDTH_M = 20;
-const BUS_HEIGHT_M = 16;
-
-function mToLat(m: number): number {
-  return m / 111_000;
-}
-
-function mToLon(m: number, lat: number): number {
-  return m / (111_000 * Math.cos((lat * Math.PI) / 180));
-}
-
-function busPolygon(lat: number, lon: number, heading: number): number[][] {
-  const halfLen = mToLat(BUS_LENGTH_M / 2);
-  const halfWid = mToLon(BUS_WIDTH_M / 2, lat);
-
-  const θ = (heading * Math.PI) / 180;
-  const cosθ = Math.cos(θ);
-  const sinθ = Math.sin(θ);
-
-  function rot(dLon: number, dLat: number): [number, number] {
-    return [
-      dLon * cosθ + dLat * sinθ,
-      -dLon * sinθ + dLat * cosθ,
-    ];
-  }
-
-  // Pentagon: rectangular body tapering to a nose at the front (+halfLen side).
-  // The pointed tip makes the direction of travel unambiguous at any zoom.
-  const shoulderLen = halfLen * 0.55; // where the body begins to taper
-  const corners: [number, number][] = [
-    [-halfWid, -halfLen],      // back-left
-    [ halfWid, -halfLen],      // back-right
-    [ halfWid,  shoulderLen],  // front-right shoulder
-    [ 0,        halfLen],      // nose tip
-    [-halfWid,  shoulderLen],  // front-left shoulder
-  ];
-
-  const ring = corners.map(([dLon, dLat]) => {
-    const [rLon, rLat] = rot(dLon, dLat);
-    return [lon + rLon, lat + rLat];
-  });
-  ring.push(ring[0]);
-  return ring;
 }
 
 function busProperties(b: VehicleLocation, color: string) {

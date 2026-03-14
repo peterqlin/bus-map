@@ -3,6 +3,7 @@ import Map, { type MapRef, NavigationControl, ScaleControl } from 'react-map-gl'
 import type { MapLayerMouseEvent } from 'mapbox-gl';
 import type { VehicleLocation, Route, Stop, ShapePoint } from '../../types/mtd';
 import BusLayer from './BusLayer';
+import GhostLayer from './GhostLayer';
 import RouteLayer from './RouteLayer';
 import StopLayer from './StopLayer';
 import BusPopup from '../BusPopup';
@@ -84,6 +85,8 @@ export default function BusMap({
       <ScaleControl />
       <RouteLayer routes={routes} activeRoutes={activeRoutes} shapes={shapes} />
       <StopLayer stops={stops} />
+      {/* GhostLayer must come before BusLayer so its Mapbox layers sit below real buses */}
+      <GhostLayer buses={buses} shapes={shapes} routes={routes} activeRoutes={activeRoutes} />
       <BusLayer buses={buses} activeRoutes={activeRoutes} routes={routes} />
       {selectedBus && (
         <BusPopup bus={selectedBus} routes={routes} onClose={onPopupClose} />

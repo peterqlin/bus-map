@@ -75,7 +75,7 @@ def _snap_heading_to_route(
 
 
 MTD_BASE = "https://developer.mtd.org/api/v2.2/json"
-VEHICLE_POLL_INTERVAL = 60  # seconds minimum between fetches
+VEHICLE_POLL_INTERVAL = 30  # seconds minimum between fetches
 SHAPE_CACHE_TTL = 86_400    # 24 hours — aligns with nightly GTFS updates
 
 

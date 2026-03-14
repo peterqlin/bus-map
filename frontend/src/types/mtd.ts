@@ -8,6 +8,8 @@ export interface VehicleLocation {
   next_stop_id: string;
   last_updated: string;
   heading: number;
+  /** Client-side timestamp (ms) when this update was received over WebSocket. */
+  receivedAt?: number;
 }
 
 export interface Route {
