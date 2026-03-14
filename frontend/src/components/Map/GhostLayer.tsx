@@ -1,13 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { useMap } from 'react-map-gl';
 import type { GeoJSONSource } from 'mapbox-gl';
-import type { Feature, FeatureCollection, LineString, Polygon } from 'geojson';
+import type { Feature, FeatureCollection, Polygon } from 'geojson';
 import type { VehicleLocation, ShapePoint, Route } from '../../types/mtd';
 import { busPolygon, BUS_HEIGHT_M } from '../../utils/busGeometry';
 
 // Approximate campus bus speed used for dead-reckoning.
 const BUS_SPEED_MPS   = 10;   // m/s ≈ 36 km/h
 const MAX_PREDICT_SEC = 60;   // cap ghost travel — avoids runaway when a bus is idle
+
+// Trail dash geometry — rendered as fill-extrusion rectangles floating above ground.
+const DASH_LEN_M   = 8;    // length of each dash (metres)
+const DASH_GAP_M   = 8;    // gap between dashes (metres)
+const DASH_WIDTH_M = 3;    // width of each dash (metres)
+const TRAIL_BASE_M = 7;    // extrusion base — clears route lines on the ground
+const TRAIL_TOP_M  = 9;    // extrusion top (2 m tall ribbon)
 
 // Metric conversion constants at UIUC latitude (~40.1 °N).
 const LAT_SCALE         = 111_000;
@@ -116,30 +123,6 @@ function walkBackward(shape: ShapePoint[], pos: PolylinePos, distM: number): Pol
   return { segIdx, t, lat, lon };
 }
 
-/**
- * Collect the coordinates of the route curve from `startLon/Lat` to `to`,
- * including intermediate shape vertices so the trail follows real turns.
- */
-function routeCoords(
-  shape: ShapePoint[],
-  startLon: number, startLat: number,
-  from: PolylinePos,
-  to: PolylinePos,
-  forward: boolean,
-): [number, number][] {
-  const pts: [number, number][] = [[startLon, startLat]];
-  if (forward) {
-    for (let i = from.segIdx + 1; i <= to.segIdx && i < shape.length; i++) {
-      pts.push([shape[i].shape_pt_lon, shape[i].shape_pt_lat]);
-    }
-  } else {
-    for (let i = from.segIdx; i > to.segIdx; i--) {
-      pts.push([shape[i].shape_pt_lon, shape[i].shape_pt_lat]);
-    }
-  }
-  pts.push([to.lon, to.lat]);
-  return pts;
-}
 
 /** Compass heading (degrees, 0=N clockwise) of segment `segIdx`. */
 function segmentHeading(shape: ShapePoint[], segIdx: number): number {
@@ -152,6 +135,37 @@ function segmentHeading(shape: ShapePoint[], segIdx: number): number {
 /** Smallest angle between two compass headings (0–180). */
 function angularDiff(a: number, b: number): number {
   return Math.abs(((a - b + 180 + 360) % 360) - 180);
+}
+
+/**
+ * Axis-aligned rectangle (in metres) rotated to `heading`, returned as a
+ * closed GeoJSON ring.  Used for individual trail dash polygons.
+ */
+function dashPolygon(lat: number, lon: number, heading: number): number[][] {
+  const halfLen = DASH_LEN_M  / 2;
+  const halfWid = DASH_WIDTH_M / 2;
+  const θ    = (heading * Math.PI) / 180;
+  const cosθ = Math.cos(θ);
+  const sinθ = Math.sin(θ);
+  const toLatDeg = (m: number) => m / 111_000;
+  const toLonDeg = (m: number) => m / (111_000 * Math.cos((lat * Math.PI) / 180));
+
+  function rot(dRight: number, dFwd: number): [number, number] {
+    return [
+      toLonDeg( dRight * cosθ + dFwd * sinθ),
+      toLatDeg(-dRight * sinθ + dFwd * cosθ),
+    ];
+  }
+
+  const corners: [number, number][] = [
+    [-halfWid, -halfLen],
+    [ halfWid, -halfLen],
+    [ halfWid,  halfLen],
+    [-halfWid,  halfLen],
+  ];
+  const ring = corners.map(([dr, df]) => { const [rl, rb] = rot(dr, df); return [lon + rl, lat + rb]; });
+  ring.push(ring[0]);
+  return ring;
 }
 
 // ─── component ──────────────────────────────────────────────────────────────
@@ -203,17 +217,19 @@ export default function GhostLayer({ buses, shapes, routes, activeRoutes }: Ghos
       map.addSource('ghost-trails', { type: 'geojson', data: EMPTY });
       map.addSource('ghost-buses',  { type: 'geojson', data: EMPTY });
 
-      // Trail — dashed line that follows the route curve.
+      // Trail — fill-extrusion dashes floating at 7–9 m above ground.
+      // fill-extrusion is the only layer type that guarantees 3D altitude on
+      // dark-v11; line layers with line-z-offset require the Standard style.
       // beforeId 'bus-layer' keeps ghost layers below real buses in the stack.
       map.addLayer({
-        id: 'ghost-trail-line',
-        type: 'line',
+        id: 'ghost-trail-extrusion',
+        type: 'fill-extrusion',
         source: 'ghost-trails',
         paint: {
-          'line-color':      ['get', 'color'],
-          'line-width':       3,
-          'line-opacity':     0.5,
-          'line-dasharray':  [2, 2.5],
+          'fill-extrusion-color':   ['get', 'color'],
+          'fill-extrusion-height':   TRAIL_TOP_M,
+          'fill-extrusion-base':     TRAIL_BASE_M,
+          'fill-extrusion-opacity':  0.75,
         },
       }, 'bus-layer');
 
@@ -234,8 +250,8 @@ export default function GhostLayer({ buses, shapes, routes, activeRoutes }: Ghos
         const now    = Date.now();
         const colors = new Map(routesRef.current.map((r) => [r.route_id, `#${r.route_color}`]));
 
-        const trailFeatures: Feature<LineString>[] = [];
-        const ghostFeatures: Feature<Polygon>[]    = [];
+        const trailFeatures: Feature<Polygon>[] = [];
+        const ghostFeatures: Feature<Polygon>[] = [];
 
         for (const bus of busesRef.current) {
           if (!activeRef.current.has(bus.route_id) || !bus.receivedAt) continue;
@@ -260,15 +276,22 @@ export default function GhostLayer({ buses, shapes, routes, activeRoutes }: Ghos
           const ghostHead    = goingFwd ? ghostSegHead : (ghostSegHead + 180) % 360;
           const color        = colors.get(bus.route_id) ?? '#3b82f6';
 
-          // Trail follows the actual route curve so it rounds corners correctly.
-          trailFeatures.push({
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: routeCoords(shape, bus.lon, bus.lat, nearest, ghost, goingFwd),
-            },
-            properties: { color },
-          });
+          // Trail — fill-extrusion dashes placed at regular intervals from the
+          // real bus position to the ghost, following the route curve.
+          const dashStep = DASH_LEN_M + DASH_GAP_M;
+          for (let d = DASH_LEN_M / 2; d <= distM; d += dashStep) {
+            const dp = goingFwd
+              ? walkForward(shape, nearest, d)
+              : walkBackward(shape, nearest, d);
+            const dh = goingFwd
+              ? segmentHeading(shape, dp.segIdx)
+              : (segmentHeading(shape, dp.segIdx) + 180) % 360;
+            trailFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: [dashPolygon(dp.lat, dp.lon, dh)] },
+              properties: { color },
+            });
+          }
 
           ghostFeatures.push({
             type: 'Feature',
@@ -300,8 +323,8 @@ export default function GhostLayer({ buses, shapes, routes, activeRoutes }: Ghos
     return () => {
       cancelAnimationFrame(rafIdRef.current);
       map.off('load', setup);
-      if (map.getLayer('ghost-trail-line')) map.removeLayer('ghost-trail-line');
-      if (map.getLayer('ghost-bus-layer'))  map.removeLayer('ghost-bus-layer');
+      if (map.getLayer('ghost-trail-extrusion')) map.removeLayer('ghost-trail-extrusion');
+      if (map.getLayer('ghost-bus-layer'))       map.removeLayer('ghost-bus-layer');
       if (map.getSource('ghost-trails'))    map.removeSource('ghost-trails');
       if (map.getSource('ghost-buses'))     map.removeSource('ghost-buses');
     };
