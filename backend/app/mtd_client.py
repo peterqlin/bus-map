@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 MTD_BASE = "https://developer.mtd.org/api/v2.2/json"
 VEHICLE_POLL_INTERVAL = 60  # seconds minimum between fetches
+SHAPE_CACHE_TTL = 86_400    # 24 hours — aligns with nightly GTFS updates
 
 
 class MTDClient:
@@ -23,6 +24,7 @@ class MTDClient:
         self._routes_cache: list[Route] | None = None
         self._stops_cache: list[Stop] | None = None
         self._shape_cache: dict[str, list[ShapePoint]] = {}
+        self._shape_cache_expiry: dict[str, float] = {}
         self._shape_fetching: dict[str, asyncio.Task[list[ShapePoint]]] = {}
         # Maps route_id -> shape_id, populated from vehicle trip data
         self._route_shape_ids: dict[str, str] = {}
@@ -57,15 +59,20 @@ class MTDClient:
             shape_id = trip.get("shape_id") or ""
             if route_id and shape_id:
                 self._route_shape_ids[route_id] = shape_id
+            lat_val = location.get("lat")
+            lon_val = location.get("lon")
+            if lat_val is None or lon_val is None:
+                continue  # skip vehicles with no position data
             vehicles.append(VehicleLocation(
                 vehicle_id=v.get("vehicle_id") or "",
-                lat=location.get("lat") or 0.0,
-                lon=location.get("lon") or 0.0,
+                lat=lat_val,
+                lon=lon_val,
                 route_id=route_id,
                 trip_id=trip.get("trip_id") or "",
                 shape_id=shape_id,
                 next_stop_id=v.get("next_stop_id") or "",
                 last_updated=v.get("last_updated") or "",
+                heading=float(location.get("heading") or 0.0),
             ))
         self._vehicle_cache = vehicles
         self._vehicle_last_fetch = now
@@ -98,7 +105,8 @@ class MTDClient:
         return self._stops_cache
 
     async def get_shape(self, route_id: str) -> list[ShapePoint]:
-        if route_id in self._shape_cache:
+        now = time.monotonic()
+        if route_id in self._shape_cache and now < self._shape_cache_expiry.get(route_id, 0):
             return self._shape_cache[route_id]
         # If a fetch is already in flight for this route, await it instead of launching another
         if route_id in self._shape_fetching:
@@ -121,4 +129,5 @@ class MTDClient:
             shape_pt_sequence=p["shape_pt_sequence"],
         ) for p in raw]
         self._shape_cache[route_id] = points
+        self._shape_cache_expiry[route_id] = time.monotonic() + SHAPE_CACHE_TTL
         return points

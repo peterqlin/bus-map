@@ -35,11 +35,11 @@ cd frontend && npm test
 
 ### Frontend map
 - **`optimizeDeps.exclude: ['mapbox-gl']` is intentionally absent.** mapbox-gl's dist is a UMD bundle; excluding it from Vite pre-bundling causes the browser to receive a raw UMD module it can't load as ESM. Let Vite pre-bundle it.
-- **Bus rendering** uses `fill-extrusion` polygons (not symbol layers). Each bus is a 12 m × 2.5 m × 3.5 m rectangle computed from lat/lon/heading and extruded. No external image files needed.
+- **Bus rendering** uses `fill-extrusion` polygons (not symbol layers). Each bus is a 60 m × 20 m × 16 m rectangle computed from lat/lon/heading and extruded — intentionally oversized for visibility at zoom 15+. No external image files needed.
 - **`<BusPopup>`** must be rendered inside the `<Map>` component tree (it is in `BusMap.tsx`). Rendering it outside causes a missing Map context error.
 
 ### Backend settings
-- `ALLOWED_ORIGINS` in `.env` must be a JSON array: `["http://localhost:5173"]`. pydantic-settings attempts JSON-decode on list fields before validators run.
+- `ALLOWED_ORIGINS` in `.env` accepts either a JSON array (`["https://example.com"]`) or a comma-separated string (`https://example.com,https://other.com`). Both formats are handled — pydantic-settings JSON-decodes the list field first, and a fallback validator splits on commas. Defaults to `["http://localhost:5173"]` when unset.
 
 ## Key files
 

@@ -6,18 +6,24 @@ export function useRoutes() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [activeRoutes, setActiveRoutes] = useState<Set<string>>(new Set());
   const [shapes, setShapes] = useState<Record<string, ShapePoint[]>>({});
+  const [routeError, setRouteError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getRoutes().then((data) => {
-      setRoutes(data);
-      setActiveRoutes(new Set(data.map((r) => r.route_id)));
-      // Pre-load shapes for all routes so they render immediately on first paint
-      data.forEach((r) => {
-        api.getShape(r.route_id).then((pts) => {
-          setShapes((s) => ({ ...s, [r.route_id]: pts }));
+    api.getRoutes()
+      .then((data) => {
+        setRoutes(data);
+        setActiveRoutes(new Set(data.map((r) => r.route_id)));
+        // Pre-load shapes for all routes so they render immediately on first paint
+        data.forEach((r) => {
+          api.getShape(r.route_id)
+            .then((pts) => setShapes((s) => ({ ...s, [r.route_id]: pts })))
+            .catch((err) => console.error(`Failed to load shape for ${r.route_id}:`, err));
         });
+      })
+      .catch((err) => {
+        console.error('Failed to load routes:', err);
+        setRouteError('Could not load routes. Is the backend running?');
       });
-    });
   }, []);
 
   const toggleRoute = useCallback(async (routeId: string) => {
@@ -29,9 +35,9 @@ export function useRoutes() {
         next.add(routeId);
         // Lazy-load shape when route becomes active
         if (!shapes[routeId]) {
-          api.getShape(routeId).then((pts) => {
-            setShapes((s) => ({ ...s, [routeId]: pts }));
-          });
+          api.getShape(routeId)
+            .then((pts) => setShapes((s) => ({ ...s, [routeId]: pts })))
+            .catch((err) => console.error(`Failed to load shape for ${routeId}:`, err));
         }
       }
       return next;
@@ -44,9 +50,9 @@ export function useRoutes() {
       // Load shapes for all routes
       routes.forEach((r) => {
         if (!shapes[r.route_id]) {
-          api.getShape(r.route_id).then((pts) => {
-            setShapes((s) => ({ ...s, [r.route_id]: pts }));
-          });
+          api.getShape(r.route_id)
+            .then((pts) => setShapes((s) => ({ ...s, [r.route_id]: pts })))
+            .catch((err) => console.error(`Failed to load shape for ${r.route_id}:`, err));
         }
       });
     } else {
@@ -54,5 +60,5 @@ export function useRoutes() {
     }
   }, [routes, shapes]);
 
-  return { routes, activeRoutes, shapes, toggleRoute, setAllRoutes };
+  return { routes, activeRoutes, shapes, routeError, toggleRoute, setAllRoutes };
 }

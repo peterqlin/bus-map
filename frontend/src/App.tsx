@@ -8,7 +8,7 @@ import Sidebar from './components/Sidebar';
 
 export default function App() {
   const { buses, connectionStatus } = useBuses();
-  const { routes, activeRoutes, shapes, toggleRoute, setAllRoutes } = useRoutes();
+  const { routes, activeRoutes, shapes, routeError, toggleRoute, setAllRoutes } = useRoutes();
   const [stops, setStops] = useState<Stop[]>([]);
   const [selectedBus, setSelectedBus] = useState<VehicleLocation | null>(null);
 
@@ -20,6 +20,14 @@ export default function App() {
 
   return (
     <div className="relative w-full h-full flex">
+      {routeError && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-xs font-medium"
+          style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b' }}
+        >
+          {routeError}
+        </div>
+      )}
       <Sidebar
         routes={routes}
         activeRoutes={activeRoutes}

@@ -10,6 +10,7 @@ async def websocket_endpoint(ws: WebSocket):
     tracker: VehicleTracker = get_vehicle_tracker(ws)
     await tracker.connect(ws)
     try:
+        # Receive loop exists only to detect disconnects; client messages are not acted on
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:

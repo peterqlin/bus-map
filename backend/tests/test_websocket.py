@@ -12,6 +12,7 @@ def test_websocket_receives_vehicles(test_client):
             "lon": -88.2272,
             "route_id": "1",
             "trip_id": "T1",
+            "shape_id": "SH1",
             "next_stop_id": "S1",
             "last_updated": "2024-01-01T00:00:00",
             "heading": 90.0,
